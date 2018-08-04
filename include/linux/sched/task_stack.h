@@ -47,11 +47,13 @@ static inline void setup_thread_stack(struct task_struct *p, struct task_struct 
  * When the stack grows up, this is the highest address.
  * Beyond that position, we corrupt data on the next page.
  */
+// thread_info+1=end of stack
 static inline unsigned long *end_of_stack(struct task_struct *p)
 {
+	// 스택이 상향으로 푸시되는 경우
 #ifdef CONFIG_STACK_GROWSUP
 	return (unsigned long *)((unsigned long)task_thread_info(p) + THREAD_SIZE) - 1;
-#else
+#else // 스택이 하향으로 푸시되는 경우 (일반적인 경우)
 	return (unsigned long *)(task_thread_info(p) + 1);
 #endif
 }

@@ -1546,9 +1546,9 @@ extern struct task_struct *curr_task(int cpu);
 extern void ia64_set_curr_task(int cpu, struct task_struct *p);
 
 void yield(void);
-
+// thread_union=커널스택, 이 내부에 thread_info를 포함한다.
 union thread_union {
-#ifndef CONFIG_ARCH_TASK_STRUCT_ON_STACK
+#ifndef CONFIG_ARCH_TASK_STRUCT_ON_STACK //일반적으로 사용됨
 	struct task_struct task;
 #endif
 #ifndef CONFIG_THREAD_INFO_IN_TASK

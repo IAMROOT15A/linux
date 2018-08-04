@@ -528,11 +528,17 @@ static void __init mm_init(void)
 	pti_init();
 }
 
+// asmlinkage: 공용코드이므로 아키텍쳐의 차이를 없애려고 사용
+// __init: __init 매크로가 mark된 해당 함수를 init section에 넣게 함
+// (메모리 아끼기 위함)
 asmlinkage __visible void __init start_kernel(void)
 {
 	char *command_line;
 	char *after_dashes;
 
+	// init_task: linux/init_task.c에 struct로 정의되어 있음.
+	// start_kernel을 실행하는 주체는 init_task, init_task가 해야하는 역할을 정의함.
+	// init_task: 초기화, 메모리swap 담당. pid=0, 모든 task의 시작점.
 	set_task_stack_end_magic(&init_task);
 	smp_setup_processor_id();
 	debug_objects_early_init();

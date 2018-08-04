@@ -44,6 +44,7 @@ typedef struct xtregs_coprocessor {
 
 #endif
 
+// 왜 thread_info가 stack의 끝을 나타내는가?
 struct thread_info {
 	struct task_struct	*task;		/* main task structure */
 	unsigned long		flags;		/* low level flags */
