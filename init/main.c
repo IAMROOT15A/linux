@@ -536,13 +536,16 @@ asmlinkage __visible void __init start_kernel(void)
 	char *command_line;
 	char *after_dashes;
 
+// IMRT : thread_union 내에서, 커널 스택에 의해 thread_info가 corrupt되지 않도록, init_tack 내에 stack끝에 magic number를 설정. 
 	// init_task: linux/init_task.c에 struct로 정의되어 있음.
 	// start_kernel을 실행하는 주체는 init_task, init_task가 해야하는 역할을 정의함.
 	// init_task: 초기화, 메모리swap 담당. pid=0, 모든 task의 시작점.
 	set_task_stack_end_magic(&init_task);
+// IMRT : 현재 구동중인 물리적인 core number를 logical core num 0로 세팅.
 	smp_setup_processor_id();
+// IMRT : DEBUG 생략.
 	debug_objects_early_init();
-
+// IMRT : 
 	cgroup_init_early();
 
 	local_irq_disable();
