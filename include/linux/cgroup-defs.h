@@ -167,6 +167,11 @@ struct cgroup_subsys_state {
  * object and speeds up fork()/exit(), since a single inc/dec and a
  * list_add()/del() can bump the reference count on the entire cgroup
  * set for a task.
+ * IMRT> css를 공유하는 cgroup에 대해 fork/exit 연산을 빠르게 하기 위해 css_set으로 묶는다.  
+ 관련된 모든 css_set을 건드리지 않고 공통된 css_set만 수정해도, 해당 css_set을 참조하는 cgroup에 반영됨.
+ 문제: 각 cgroup이 subsystem state를 가지는 경우, task fork/exit마다 cgroup 수정이 일어나므로, state 또한 수정이 일어남.
+  목표: fork/exit 시, state 수정 횟수를 줄임
+  방법: cgroup과 subsystem state를 분리, state set이 일치하면 state set share. 
  */
 struct css_set {
 	/*

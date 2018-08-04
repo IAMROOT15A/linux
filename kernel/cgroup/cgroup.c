@@ -1857,12 +1857,16 @@ void init_cgroup_root(struct cgroup_root *root, struct cgroup_sb_opts *opts)
 	struct cgroup *cgrp = &root->cgrp;
 
 	INIT_LIST_HEAD(&root->root_list);
+	// IMRT> cgroup root에 속해있는 cgroup은 하나다.
 	atomic_set(&root->nr_cgrps, 1);
 	cgrp->root = root;
+	// IMRT> root cgroup을 init
 	init_cgroup_housekeeping(cgrp);
 	idr_init(&root->cgroup_idr);
 
+	// IMRT> opts-> flag 는 부팅 시 0으로 초기화되어 있어 root->flags도 0.
 	root->flags = opts->flags;
+	// IMRT> all zero
 	if (opts->release_agent)
 		strscpy(root->release_agent_path, opts->release_agent, PATH_MAX);
 	if (opts->name)
@@ -5209,12 +5213,14 @@ int __init cgroup_init_early(void)
 	static struct cgroup_sb_opts __initdata opts;
 	struct cgroup_subsys *ss;
 	int i;
-
+	// IMRT> cgroup_root 및 root cgroup 초기화.
 	init_cgroup_root(&cgrp_dfl_root, &opts);
+	// root cgroup을 아무도 참조하지 않는다. (flag 추가)
 	cgrp_dfl_root.cgrp.self.flags |= CSS_NO_REF;
-
+	// IMRT> css_set을 초기화한다. Check struct css_set.
 	RCU_INIT_POINTER(init_task.cgroups, &init_css_set);
 
+	// IMRT> cgroup_root의 subsys들을 초기화 한다.
 	for_each_subsys(ss, i) {
 		WARN(!ss->css_alloc || !ss->css_free || ss->name || ss->id,
 		     "invalid cgroup_subsys %d:%s css_alloc=%p css_free=%p id:name=%d:%s\n",

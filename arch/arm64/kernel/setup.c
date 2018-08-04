@@ -94,7 +94,9 @@ u64 __cacheline_aligned boot_args[4];
 
 void __init smp_setup_processor_id(void)
 {
+	// IMRT) MPIDR :  현재 돌고 있는 (Linear하지 않은) 코어 ID. (0번 코어로 부팅하는 경우가 대부분이기 때문에, 0번이 나올 확률이 크다.) 
 	u64 mpidr = read_cpuid_mpidr() & MPIDR_HWID_BITMASK;
+	// IMRT) 현재 동작중인 HW core를 logical하게 0번으로 mapping 해준다
 	cpu_logical_map(0) = mpidr;
 
 	/*
@@ -102,6 +104,7 @@ void __init smp_setup_processor_id(void)
 	 * using percpu variable early, for example, lockdep will
 	 * access percpu variable inside lock_release
 	 */
+	// IMRT) per_cpu 자료구조에서 사용되는 cpu마다 개별적으로 가지는 offset 값.
 	set_my_cpu_offset(0);
 	pr_info("Booting Linux on physical CPU 0x%010lx [0x%08x]\n",
 		(unsigned long)mpidr, read_cpuid_id());
