@@ -2006,12 +2006,18 @@ void init_cpu_online(const struct cpumask *src)
  */
 void __init boot_cpu_init(void)
 {
+	// IMRT> 현재 cpu number를 불러온다.
 	int cpu = smp_processor_id();
 
+	// IMRT> Boot cpu의 percpu영역의  online, active, present, possible을 set한다.
 	/* Mark the boot cpu "present", "online" etc for SMP and UP case */
+	// cpu_online_mask : cpu가 사용 중인 상태를 나타내고 스케줄러가 사용하는 마스크
 	set_cpu_online(cpu, true);
+	// cpu_active_mask : 온라인 상태이고 태스크 마이그레이션이 가능한 cpu를 나타내는 마스크
 	set_cpu_active(cpu, true);
+	// cpu_present_mask : 시스템 내에 장착된 cpu가 존재함을 나타내는 마스크
 	set_cpu_present(cpu, true);
+	// cpu_possible_mask  : 시스템이 동작하거나 핫플러그 가능 상태로 장착하여 지원할 cpu를 나타내는 마스크로, 부팅 시 고정된다.
 	set_cpu_possible(cpu, true);
 
 #ifdef CONFIG_SMP

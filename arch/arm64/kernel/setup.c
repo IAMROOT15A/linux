@@ -248,13 +248,17 @@ u64 __cpu_logical_map[NR_CPUS] = { [0 ... NR_CPUS-1] = INVALID_HWID };
 
 void __init setup_arch(char **cmdline_p)
 {
+	// init_mm의 code/data/heap 영역의 주소 설정
+	// text, _etext, _edata, _end는 arch별로 vmlinux.lds(linker description script) 파일에 명시되어 있음.
 	init_mm.start_code = (unsigned long) _text;
 	init_mm.end_code   = (unsigned long) _etext;
 	init_mm.end_data   = (unsigned long) _edata;
 	init_mm.brk	   = (unsigned long) _end;
-
+	// cmdline_p에 boot_command_line주소를 대입한다.
 	*cmdline_p = boot_command_line;
 
+	// IMRT> fixmap은 컴파일 타임에 가상 주소공간이 이미 결정된 매핑 영역이다.
+	// 매핑 서브시스템이 활성화되기 전에 매핑이 필요할 때 사용한다.
 	early_fixmap_init();
 	early_ioremap_init();
 

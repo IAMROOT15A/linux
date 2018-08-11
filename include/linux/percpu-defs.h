@@ -218,7 +218,11 @@
  */
 #define __verify_pcpu_ptr(ptr)						\
 do {									\
+	// IMRT > __percpu : percpu 영역의 데이터 포인터.
+	// percpu 영역 : cpu 별로 가지는 데이터 영역.
+	// percpu 데이터가 아닌 데이터가 ptr로 들어왔을 경우, 형 변환에서 error를 발생시킨다.
 	const void __percpu *__vpp_verify = (typeof((ptr) + 0))NULL;	\
+	// IMRT> 컴파일 시 unused variable 에러를 없애기 위해서 (void) 변환 적용.
 	(void)__vpp_verify;						\
 } while (0)
 

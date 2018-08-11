@@ -781,6 +781,7 @@ static inline pte_t * fixmap_pte(unsigned long addr)
  */
 void __init early_fixmap_init(void)
 {
+	// IMRT> pgd(page global directory), pud(page upper directory), pmd(page midlevel directory), pte(page table entry)
 	pgd_t *pgdp, pgd;
 	pud_t *pudp;
 	pmd_t *pmdp;
