@@ -296,6 +296,8 @@ extern int cpumask_next_wrap(int n, const struct cpumask *mask, int start, bool 
  */
 static inline void cpumask_set_cpu(unsigned int cpu, struct cpumask *dstp)
 {
+	// IMRT> cpumask_bits : (unsingned long) cpumask bits 배열을 갖고온다.
+	// cpumask_check = cpu 
 	set_bit(cpumask_check(cpu), cpumask_bits(dstp));
 }
 
@@ -798,6 +800,7 @@ static inline void
 set_cpu_online(unsigned int cpu, bool online)
 {
 	if (online)
+		// IMRT>
 		cpumask_set_cpu(cpu, &__cpu_online_mask);
 	else
 		cpumask_clear_cpu(cpu, &__cpu_online_mask);

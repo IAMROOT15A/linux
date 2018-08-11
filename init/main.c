@@ -523,9 +523,10 @@ asmlinkage __visible void __init start_kernel(void)
 	smp_setup_processor_id();
 // IMRT : DEBUG 생략.
 	debug_objects_early_init();
-// IMRT : 
+// IMRT : cgroup 정보를 init한다.
 	cgroup_init_early();
-
+// IMRT : 현재 코어의 인터럽트 수신을 disable로 바꾸어 펜딩시켜,
+// 현재 실행 중인 컨텍스트를 보호하며, start_kernel의 후반부에 다시 enable한다. 
 	local_irq_disable();
 	early_boot_irqs_disabled = true;
 
@@ -533,9 +534,14 @@ asmlinkage __visible void __init start_kernel(void)
 	 * Interrupts are still disabled. Do necessary setups, then
 	 * enable them.
 	 */
+
+// boot_cpu_init : 현재 cpu의 online|active|present|possible 상태를 set한다.
 	boot_cpu_init();
+// page_address_init : CONFIG_HIGHMEM이 설정되어 있지 않을 경우, 아무 동작도 하지 않는다. (arm64에서는 설정되지 않는다)
 	page_address_init();
+// linux_banner 출력
 	pr_notice("%s", linux_banner);
+
 	setup_arch(&command_line);
 	/*
 	 * Set up the the initial canary and entropy after arch

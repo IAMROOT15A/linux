@@ -1225,6 +1225,7 @@ bool __init early_init_dt_verify(void *params)
 
 void __init early_init_dt_scan_nodes(void)
 {
+	// IMRT> 커널이 bootargs를 읽어 boot_command_line 변수를 채운다.
 	/* Retrieve various information from the /chosen node */
 	of_scan_flat_dt(early_init_dt_scan_chosen, boot_command_line);
 

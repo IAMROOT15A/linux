@@ -59,6 +59,8 @@ static inline void arch_local_irq_enable(void)
 
 static inline void arch_local_irq_disable(void)
 {
+	// IMRT> DAIF 클리어 레지스터에 2를 저장해 인터럽트를 마스킹한다.
+	// 이렇게하면 인터럽트를 수신하지 않고 펜딩 시킨다. 
 	asm volatile(
 		"msr	daifset, #2		// arch_local_irq_disable"
 		:
