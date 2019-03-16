@@ -371,6 +371,7 @@ static inline void set_page_slub_counters(struct page *page, unsigned long count
 	page->objects = tmp.objects;
 }
 
+// IMRT >> page에 저장된 freelist와 counters가 old와 동일하다면 new로 변경
 /* Interrupts must be disabled (for the fallback code to work right) */
 static inline bool __cmpxchg_double_slab(struct kmem_cache *s, struct page *page,
 		void *freelist_old, unsigned long counters_old,
@@ -1779,6 +1780,7 @@ static inline void *acquire_slab(struct kmem_cache *s,
 	counters = page->counters;
 	new.counters = counters;
 	*objects = new.objects - new.inuse;
+	// IMRT >> 첫 번째 slab이면 해당 slab을 모두 사용중으로 변경.
 	if (mode) {
 		new.inuse = page->objects;
 		new.freelist = NULL;
@@ -1795,6 +1797,7 @@ static inline void *acquire_slab(struct kmem_cache *s,
 			"acquire_slab"))
 		return NULL;
 
+	// IMRT >> s->n->page를 삭제하고 page의 freelist를 반환.
 	remove_partial(n, page);
 	WARN_ON(!freelist);
 	return freelist;
@@ -1824,25 +1827,37 @@ static void *get_partial_node(struct kmem_cache *s, struct kmem_cache_node *n,
 		return NULL;
 
 	spin_lock(&n->list_lock);
+
+	// IMRT >> s->node[nid] == n or 가까운 node
+	// page == &n->partial이 가리키고 있는 page
+	// page2 == page->next
 	list_for_each_entry_safe(page, page2, &n->partial, lru) {
 		void *t;
 
 		if (!pfmemalloc_match(page, flags))
 			continue;
 
+		// IMRT >> objects = page에 존재하는 free object의 개수
+		// object == page의 freelist
 		t = acquire_slab(s, n, page, object == NULL, &objects);
 		if (!t)
 			break;
 
+		// IMRT >> 사용가능한 총 slub 객체
 		available += objects;
+		// IMRT >> 첫 번째 slub 이면
 		if (!object) {
+			// IMRT >> cpu_slab의 page를 t로 설정.
 			c->page = page;
 			stat(s, ALLOC_FROM_PARTIAL);
 			object = t;
-		} else {
+		} else { // IMRT >> 두 번째 slub page 부터는 cpu_slab의 partial에 등록.
 			put_cpu_partial(s, page, 0);
 			stat(s, CPU_PARTIAL_NODE);
 		}
+
+		// IMRT >> cpu partial이 없거나, 사용 가능한 free obj(available)가
+		// s->cpu_partial 수의 절반을 넘으면 중지.
 		if (!kmem_cache_has_cpu_partial(s)
 			|| available > slub_cpu_partial(s) / 2)
 			break;
@@ -1925,15 +1940,22 @@ static void *get_partial(struct kmem_cache *s, gfp_t flags, int node,
 	void *object;
 	int searchnode = node;
 
+	// IMRT >> node가 지정되지 않았다면 가까운 메모리가 있는 node를 가져옴
 	if (node == NUMA_NO_NODE)
 		searchnode = numa_mem_id();
+	// IMRT >> 지정된 node에 page가 없다면 가까운 메모리가 있는 node를 가져옴.
 	else if (!node_present_pages(node))
 		searchnode = node_to_mem_node(node);
 
+	// IMRT >> node partial에서 맨 처음 slab을  cpu_slab->freelist 로 옮기고 그 object를 반환.
+	// free obj 수가 cpu_partial / 2 보다 클 때까지 cpu partial list에 slub을
+	// node partial에서 가져옴.
 	object = get_partial_node(s, get_node(s, searchnode), c, flags);
 	if (object || node != NUMA_NO_NODE)
 		return object;
 
+	// IMRT >> node partial에서 맨 처음 slub을 받아오지 못하면 리모트 노드에서
+	// 가져온다.
 	return get_any_partial(s, flags, c);
 }
 
@@ -2433,6 +2455,7 @@ static inline void *new_slab_objects(struct kmem_cache *s, gfp_t flags,
 	if (freelist)
 		return freelist;
 
+	// IMRT >> remote로 부터도 받아오지 못하면 버디로부터 새로 할당.
 	page = new_slab(s, flags, node);
 	if (page) {
 		c = raw_cpu_ptr(s->cpu_slab);
@@ -2578,6 +2601,8 @@ load_freelist:
 
 new_slab:
 
+	// IMRT >> c에 partial이 있을 때, partial list의 첫 번째 page를
+	// c->page로 넣고, partial은 두 번째 page를 가르키도록 하고 새로 alloc 시도.
 	if (slub_percpu_partial(c)) {
 		page = c->page = slub_percpu_partial(c);
 		slub_set_percpu_partial(c, page);
@@ -3352,6 +3377,7 @@ static void early_kmem_cache_node_alloc(int node)
 
 	n = page->freelist;
 	BUG_ON(!n);
+	// IMRT >> 다음 free pointer를 가르키게 됨.
 	page->freelist = get_freepointer(kmem_cache_node, n);
 	page->inuse = 1;
 	page->frozen = 0;
