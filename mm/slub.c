@@ -2029,6 +2029,9 @@ static void init_kmem_cache_cpus(struct kmem_cache *s)
 /*
  * Remove the cpu slab
  */
+// IMRT >> cpu_slab->freelist를 page->freelist로 옮기고,
+// (remote object가 남아 있을 수 있기 때문)
+// node partial로 옮길지, 버디로 돌려줄지 결정함.
 static void deactivate_slab(struct kmem_cache *s, struct page *page,
 				void *freelist, struct kmem_cache_cpu *c)
 {
@@ -2543,17 +2546,23 @@ static inline void *get_freelist(struct kmem_cache *s, struct page *page)
  * Version of __slab_alloc to use when we know that interrupts are
  * already disabled (which is the case for bulk allocation).
  */
+// IMRT >> http://jake.dothome.co.kr/slub-object-alloc/
+// slow/fast path를 수행하여 freelist를 반환.
 static void *___slab_alloc(struct kmem_cache *s, gfp_t gfpflags, int node,
 			  unsigned long addr, struct kmem_cache_cpu *c)
 {
 	void *freelist;
 	struct page *page;
 
+	// IMRT >> page가 존재하면 fast path가 가능
 	page = c->page;
 	if (!page)
 		goto new_slab;
 redo:
 
+	// IMRT >> 요청한 node와 page의 node가 다르면
+	// 할당 해제(deactivate_slab => cpu_slab의 freelist를 page의 freelist로 돌려주고
+	// node partial로 넣거나 버디로 돌려줌)를 하고 재할당.
 	if (unlikely(!node_match(page, node))) {
 		int searchnode = node;
 
@@ -2572,18 +2581,28 @@ redo:
 	 * PFMEMALLOC but right now, we are losing the pfmemalloc
 	 * information when the page leaves the per-cpu allocator
 	 */
+	// IMRT >> free 페이지가 부족하여 low 워터마크 아래로 내려왔을 때 할당 받은
+	// 페이지(특수 목적으로 사용)인 경우 할당 해제하고 재할당한다.
 	if (unlikely(!pfmemalloc_match(page, gfpflags))) {
 		deactivate_slab(s, page, c->freelist, c);
 		goto new_slab;
 	}
 
 	/* must check again c->freelist in case of cpu migration or IRQ */
+	// IMRT >> IRQ나 cpu migration 떄문에 없던 freelist가 발생했을 경우
+	// 그 object를 사용.
 	freelist = c->freelist;
 	if (freelist)
 		goto load_freelist;
 
+	// IMRT >> cpu의 freelist가 존재하지 않으면
+	// page에서 freelist를 가져옴.
+	// slow path 1 을 의미.
 	freelist = get_freelist(s, page);
 
+	// IMRT >> page에 freelist가 존재하지 않으면
+	// cpu가 가르키는 page를 제거하고 재할당.
+	// => slab obj가 모두 사용중임을 의미.
 	if (!freelist) {
 		c->page = NULL;
 		stat(s, DEACTIVATE_BYPASS);
@@ -2599,8 +2618,10 @@ load_freelist:
 	 * That page must be frozen for per cpu allocations to work.
 	 */
 	VM_BUG_ON(!c->page->frozen);
+	// IMRT >> c->freelist는 freelist의 next를 가리킨다.
 	c->freelist = get_freepointer(s, freelist);
 	c->tid = next_tid(c->tid);
+	// IMRT >> freelist 즉, object 할당 완료.
 	return freelist;
 
 new_slab:
@@ -2615,6 +2636,7 @@ new_slab:
 		goto redo;
 	}
 
+	// IMRT >> slowpath 3 or 4를 함.
 	freelist = new_slab_objects(s, gfpflags, node, &c);
 
 	if (unlikely(!freelist)) {
@@ -2622,6 +2644,7 @@ new_slab:
 		return NULL;
 	}
 
+	// IMRT >> gfpflags가 잘 맞으면 freelist를 load
 	page = c->page;
 	if (likely(!kmem_cache_debug(s) && pfmemalloc_match(page, gfpflags)))
 		goto load_freelist;
@@ -2631,7 +2654,6 @@ new_slab:
 			!alloc_debug_processing(s, page, freelist, addr))
 		goto new_slab;	/* Slab failed checks. Next slab needed */
 
-	// IMRT: 여기부터 다시(2019.03.16)
 	deactivate_slab(s, page, get_freepointer(s, freelist), c);
 	return freelist;
 }
@@ -2640,6 +2662,7 @@ new_slab:
  * Another one that disabled interrupt and compensates for possible
  * cpu changes by refetching the per cpu area pointer.
  */
+// IMRT >> IRQ save를 하고 slab_alloc을 시도. (freelist를 반환)
 static void *__slab_alloc(struct kmem_cache *s, gfp_t gfpflags, int node,
 			  unsigned long addr, struct kmem_cache_cpu *c)
 {
@@ -2671,6 +2694,7 @@ static void *__slab_alloc(struct kmem_cache *s, gfp_t gfpflags, int node,
  *
  * Otherwise we can simply pick the next object from the lockless free list.
  */
+// 
 static __always_inline void *slab_alloc_node(struct kmem_cache *s,
 		gfp_t gfpflags, int node, unsigned long addr)
 {
@@ -2718,10 +2742,12 @@ redo:
 
 	object = c->freelist;
 	page = c->page;
+	// IMRT >> cpu freelist가 비었거나 cpu slab page의 node가 node와 맞지 않으면
 	if (unlikely(!object || !node_match(page, node))) {
+		// IMRT >> slab obj 한개 할당.
 		object = __slab_alloc(s, gfpflags, node, addr, c);
 		stat(s, ALLOC_SLOWPATH);
-	} else {
+	} else { // IMRT >> cpu freelist가 존재하면 obj 하나 할당
 		void *next_object = get_freepointer_safe(s, object);
 
 		/*
@@ -3424,6 +3450,7 @@ void __kmem_cache_release(struct kmem_cache *s)
 	free_kmem_cache_nodes(s);
 }
 
+// IMRT >> s->node를 kmem_cache_node slab으로부터 할당
 static int init_kmem_cache_nodes(struct kmem_cache *s)
 {
 	int node;
@@ -3438,10 +3465,11 @@ static int init_kmem_cache_nodes(struct kmem_cache *s)
 		}
 		// IMRT >> DOWN 상태에서 만든 kmem_cache_node를 이용해서
 		// 현재 할당 중인 struct kmem_cache *s에 들어갈
-		// struct kmem_cache_node의 공간을 할당 받는다.
+		// struct kmem_cache_node인 node[]들의 공간을 할당 받는다.
 		n = kmem_cache_alloc_node(kmem_cache_node,
 						GFP_KERNEL, node);
 
+		// IMRT >> 하나라도 실패하면 s에 있는 node를 전부 free
 		if (!n) {
 			free_kmem_cache_nodes(s);
 			return 0;
@@ -3674,7 +3702,7 @@ static int kmem_cache_open(struct kmem_cache *s, slab_flags_t flags)
 	if (!init_kmem_cache_nodes(s))
 		goto error;
 
-	// cpu patial slab을 초기화
+	// cpu patial slab을 할당
 	if (alloc_kmem_cache_cpus(s))
 		return 0;
 
