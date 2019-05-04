@@ -68,6 +68,7 @@ static struct nsproxy *create_new_namespaces(unsigned long flags,
 	struct nsproxy *new_nsp;
 	int err;
 
+    // IMRT >> new namespace proxy를 위한 메모리 할당
 	new_nsp = create_nsproxy();
 	if (!new_nsp)
 		return ERR_PTR(-ENOMEM);
@@ -234,34 +235,47 @@ void exit_task_namespaces(struct task_struct *p)
 	switch_task_namespaces(p, NULL);
 }
 
+// IMRT >> sys_setns
 SYSCALL_DEFINE2(setns, int, fd, int, nstype)
-{
-	struct task_struct *tsk = current;
+{ struct task_struct *tsk = current;
 	struct nsproxy *new_nsproxy;
 	struct file *file;
 	struct ns_common *ns;
 	int err;
 
+    // IMRT >> 넘어온 fd로 file struct를 불러오고, ns 파일이 아닐 경우 error.
 	file = proc_ns_fget(fd);
 	if (IS_ERR(file))
 		return PTR_ERR(file);
 
 	err = -EINVAL;
+    // IMRT >> file 정보 inode값을 가지고 온 후, nsproxy 정보를 불러온다.
 	ns = get_proc_ns(file_inode(file));
 	if (nstype && (ns->ops->type != nstype))
 		goto out;
 
+    // IMRT >> tsk = current task
 	new_nsproxy = create_new_namespaces(0, tsk, current_user_ns(), tsk->fs);
 	if (IS_ERR(new_nsproxy)) {
 		err = PTR_ERR(new_nsproxy);
 		goto out;
 	}
 
+    // IMRT >> 생성된 new_nsproxy를 ns에 install한다.
+    //         install 함수의 경우, ns 종류에 따라 각기 다른 함수가 호출된다.
+    //         ex> 
+    //          pid: pidns_install()
+    //          ipc: ipcns_install()
+    //          net: netns_install()
+    //          user: userns_install()
+    //          mnt: mntns_install()
+    //          uts: utsns_install()
 	err = ns->ops->install(new_nsproxy, ns);
 	if (err) {
 		free_nsproxy(new_nsproxy);
 		goto out;
 	}
+    // IMRT >> 현재 task의 namespace를 new_nsproxy로 바꾼 뒤, new_nsproxy를 삭제한다.
 	switch_task_namespaces(tsk, new_nsproxy);
 
 	perf_event_namespaces(tsk);

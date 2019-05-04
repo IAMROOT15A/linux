@@ -2921,6 +2921,7 @@ struct mnt_namespace *copy_mnt_ns(unsigned long flags, struct mnt_namespace *ns,
 
 	BUG_ON(!ns);
 
+    // IMRT >> flags에 CLONE_NEWNS가 설정되지 않았을 경우, ns의 reference count만 올리고, 그대로 돌려준다.
 	if (likely(!(flags & CLONE_NEWNS))) {
 		get_mnt_ns(ns);
 		return ns;
