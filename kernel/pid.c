@@ -155,7 +155,7 @@ void free_pid(struct pid *pid)
 
 	call_rcu(&pid->rcu, delayed_put_pid);
 }
-
+// IMRT: 새로운 process의 pid_namespace가 전달됨.
 struct pid *alloc_pid(struct pid_namespace *ns)
 {
 	struct pid *pid;
@@ -165,16 +165,21 @@ struct pid *alloc_pid(struct pid_namespace *ns)
 	struct upid *upid;
 	int retval = -ENOMEM;
 
+	// 새로운 pid 구조체의 공간을 slab에서 할당 받는다.
 	pid = kmem_cache_alloc(ns->pid_cachep, GFP_KERNEL);
 	if (!pid)
 		return ERR_PTR(retval);
 
+	// IMRT: upid 채울때 사용할 부모에 대한 임시 pid ns 
 	tmp = ns;
+	// IMRT: pid->level은 자신의 ns level
 	pid->level = ns->level;
 
+	// IMRT : upid를 채운다. 
 	for (i = ns->level; i >= 0; i--) {
 		int pid_min = 1;
 
+		// IMRT: RADIX TREE에서 정수형 pid 값 할당
 		idr_preload(GFP_KERNEL);
 		spin_lock_irq(&pidmap_lock);
 
@@ -199,8 +204,10 @@ struct pid *alloc_pid(struct pid_namespace *ns)
 			goto out_free;
 		}
 
+		// IMRT: 현재 level의 upid 값 입력
 		pid->numbers[i].nr = nr;
 		pid->numbers[i].ns = tmp;
+		// IMRT: 부모 namespace로 변경
 		tmp = tmp->parent;
 	}
 
@@ -209,8 +216,10 @@ struct pid *alloc_pid(struct pid_namespace *ns)
 			goto out_free;
 	}
 
+	// IMRT: reference count 증가
 	get_pid_ns(ns);
 	atomic_set(&pid->count, 1);
+	// IMRT: 해당 pid 구조체를 사용하는 tasks배열들(pid, pgid, sid)을 null로 초기화
 	for (type = 0; type < PIDTYPE_MAX; ++type)
 		INIT_HLIST_HEAD(&pid->tasks[type]);
 
@@ -218,9 +227,12 @@ struct pid *alloc_pid(struct pid_namespace *ns)
 	spin_lock_irq(&pidmap_lock);
 	if (!(ns->pid_allocated & PIDNS_ADDING))
 		goto out_unlock;
+	// IMRT: upid가 가리키고 있는(각 ns의) radix tree의 upid->nr이 가리키고 있는 node
+	// 의 값으로 pid 구조체 포인터를 저장한다.
 	for ( ; upid >= pid->numbers; --upid) {
 		/* Make the PID visible to find_pid_ns. */
 		idr_replace(&upid->ns->idr, pid, upid->nr);
+		// IMRT 현재 NS에 할당된 pid 총 갯수를 증가시킨다.
 		upid->ns->pid_allocated++;
 	}
 	spin_unlock_irq(&pidmap_lock);
