@@ -131,12 +131,14 @@ void free_pid(struct pid *pid)
 		struct upid *upid = pid->numbers + i;
 		struct pid_namespace *ns = upid->ns;
 		switch (--ns->pid_allocated) {
-		case 2:
-		case 1:
+		 case 2:	// IMRT: case 2인 경우는 kthreadd?
+		 case 1:	// IMRT: 
 			/* When all that is left in the pid namespace
 			 * is the reaper wake up the reaper.  The reaper
 			 * may be sleeping in zap_pid_ns_processes().
 			 */
+		 // XXX IMRT: child_reaper는 init ns의 init_task인데 왜 여기서 깨우는가?
+		 // child_reaper : zombie process 정리
 			wake_up_process(ns->child_reaper);
 			break;
 		case PIDNS_ADDING:
@@ -194,6 +196,9 @@ struct pid *alloc_pid(struct pid_namespace *ns)
 		 * Store a null pointer so find_pid_ns does not find
 		 * a partially initialized PID (see below).
 		 */
+		// IMRT: tmp는 namespace로 각 namespace 별로 자신의 pid를 관리하기 위한 radix tree 구조체를 가지고 있다.
+		// 각 ns는 pid_min을 1부터 시작하게 된다. 
+		// pid_max를 전역으로 지정된 상수 값으로, root ns에서 관리할 수 있는 한계를 의미한다.
 		nr = idr_alloc_cyclic(&tmp->idr, NULL, pid_min,
 				      pid_max, GFP_ATOMIC);
 		spin_unlock_irq(&pidmap_lock);

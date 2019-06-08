@@ -3845,6 +3845,8 @@ static inline int rt_effective_prio(struct task_struct *p, int prio)
 }
 #endif
 
+// IMRT: nice(), setpriority() system call이 호출된 경우 마지막으로 호출되는 함수로, 
+// static, dynamic, normal prio를 설정하고, load_weight를 설정한다.
 void set_user_nice(struct task_struct *p, long nice)
 {
 	bool queued, running;
@@ -3875,6 +3877,7 @@ void set_user_nice(struct task_struct *p, long nice)
 	running = task_current(rq, p);
 	if (queued)
 		dequeue_task(rq, p, DEQUEUE_SAVE | DEQUEUE_NOCLOCK);
+	// IMRT: XXX put_prev_task()의 역할? 
 	if (running)
 		put_prev_task(rq, p);
 

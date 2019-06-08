@@ -2779,6 +2779,7 @@ static inline void
 dequeue_load_avg(struct cfs_rq *cfs_rq, struct sched_entity *se) { }
 #endif
 
+// IMRT: *_load_avr() load balancing을 위해 rq에 속한 task들의 평균 실행시간을 관리
 static void reweight_entity(struct cfs_rq *cfs_rq, struct sched_entity *se,
 			    unsigned long weight, unsigned long runnable)
 {
@@ -2792,6 +2793,7 @@ static void reweight_entity(struct cfs_rq *cfs_rq, struct sched_entity *se,
 	dequeue_load_avg(cfs_rq, se);
 
 	se->runnable_weight = runnable;
+	// IMRT: 실제로 weight를 갱신하는 함수
 	update_load_set(&se->load, weight);
 
 #ifdef CONFIG_SMP

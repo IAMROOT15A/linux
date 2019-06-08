@@ -2101,6 +2101,7 @@ EXPORT_SYMBOL(radix_tree_tagged);
  */
 void idr_preload(gfp_t gfp_mask)
 {
+	// IMRT: PER_CPU 위치에 radix_tree_preloads에서 IDR_PRELOAD_SIZE 개수만큼 radix_tree_node를 미리 할당받는다.
 	if (__radix_tree_preload(gfp_mask, IDR_PRELOAD_SIZE))
 		preempt_disable();
 }
