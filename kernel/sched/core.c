@@ -769,6 +769,7 @@ static inline void enqueue_task(struct rq *rq, struct task_struct *p, int flags)
 	if (!(flags & ENQUEUE_RESTORE))
 		sched_info_queued(rq, p);
 
+	// IMRT: p task가 가리키고 있는 scheduler의 rq에 enqueue
 	p->sched_class->enqueue_task(rq, p, flags);
 }
 
@@ -1551,6 +1552,7 @@ int select_task_rq(struct task_struct *p, int cpu, int sd_flags, int wake_flags)
 	lockdep_assert_held(&p->pi_lock);
 
 	if (p->nr_cpus_allowed > 1)
+	 // IMRT: 스케줄러에 연결된 select_task_rq()를 호출해서 연결된 cpu를 얻어온다.
 		cpu = p->sched_class->select_task_rq(p, cpu, sd_flags, wake_flags);
 	else
 		cpu = cpumask_any(&p->cpus_allowed);
@@ -2462,15 +2464,24 @@ void wake_up_new_task(struct task_struct *p)
 	 * as we're not fully set-up yet.
 	 */
 	p->recent_used_cpu = task_cpu(p);
+	// IMRT: select_task_rq로 받아온 CPU의 CFS, RT runqueue 정보를 task_struct에 저장
 	__set_task_cpu(p, select_task_rq(p, task_cpu(p), SD_BALANCE_FORK, 0));
 #endif
+	// IMRT: rq는 percpu 영역에 존재하는 queue로 각 스케줄러별로 각각의 rq를 가짐.
+	// rt_rq: real time scheduler
+	// cfs_rq: cfs scheduler
+	// dl_rq: dead line scheduler
 	rq = __task_rq_lock(p, &rf);
 	update_rq_clock(rq);
 	post_init_entity_util_avg(&p->se);
 
+	// IMRT: rq에 task를 등록
 	activate_task(rq, p, ENQUEUE_NOCLOCK);
 	p->on_rq = TASK_ON_RQ_QUEUED;
+	// IMRT: perf or FTRACE에서 추적가능하도록 이벤트 등록? 
 	trace_sched_wakeup_new(p);
+	// IMRT: scheduler에서 preemption 여부를 체크한다. 
+	// 자세한 내용은 각 scheduler의 check_preempt_curr 확인
 	check_preempt_curr(rq, p, WF_FORK);
 #ifdef CONFIG_SMP
 	if (p->sched_class->task_woken) {

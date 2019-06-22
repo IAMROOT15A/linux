@@ -202,8 +202,10 @@ static int free_vm_stack_cache(unsigned int cpu)
 }
 #endif
 
+// IMRT : 여기를 탈 것 같음 - CONFIG_VMAP_STACK가 있음
 static unsigned long *alloc_thread_stack_node(struct task_struct *tsk, int node)
 {
+ // IMRT: 보안성 향상을 위해 커널 스택을 vmalloc 영역에 가상 매핑하여 사용 by 문C
 #ifdef CONFIG_VMAP_STACK
 	void *stack;
 	int i;
@@ -211,8 +213,11 @@ static unsigned long *alloc_thread_stack_node(struct task_struct *tsk, int node)
 	for (i = 0; i < NR_CACHED_STACKS; i++) {
 		struct vm_struct *s;
 
+		// IMRT: percpu 영역에  캐싱해둔 stack을 가져옴
+		// NR_CACHED_STACKS를 NULL로 변환하고 기존의 cached stack을 돌려준다.
 		s = this_cpu_xchg(cached_stacks[i], NULL);
 
+		// IMRT: percpu에 캐싱한 stack이 없으면 continue
 		if (!s)
 			continue;
 
@@ -224,6 +229,7 @@ static unsigned long *alloc_thread_stack_node(struct task_struct *tsk, int node)
 		return s->addr;
 	}
 
+	// IMRT: 여기볼 차례
 	stack = __vmalloc_node_range(THREAD_SIZE, THREAD_ALIGN,
 				     VMALLOC_START, VMALLOC_END,
 				     THREADINFO_GFP,
@@ -767,6 +773,7 @@ static struct task_struct *dup_task_struct(struct task_struct *orig, int node)
 
 	if (node == NUMA_NO_NODE)
 		node = tsk_fork_get_node(orig);
+	// kmem_cache에서 해당 task struct의 공간 동적 할당
 	tsk = alloc_task_struct_node(node);
 	if (!tsk)
 		return NULL;
@@ -2084,6 +2091,7 @@ long _do_fork(unsigned long clone_flags,
 			trace = 0;
 	}
 
+	// IMRT: current parent를 부모로 하는 새로운 task 생성
 	p = copy_process(clone_flags, stack_start, stack_size,
 			 child_tidptr, NULL, trace, tls, NUMA_NO_NODE);
 	add_latent_entropy();
@@ -2097,9 +2105,15 @@ long _do_fork(unsigned long clone_flags,
 	 */
 	trace_sched_process_fork(current, p);
 
+	// IMRT: pid: 현재 생성된(자식) task의 pid 구조체
+	// 내부의 get_pid에서 pid 참조 카운트 1 증가
 	pid = get_task_pid(p, PIDTYPE_PID);
+	// IMRT: nr = 자식 task의  PID, (부모 task pid ns에서의 정수형 PID)
 	nr = pid_vnr(pid);
 
+	// IMRT: pthread_create()시에 clone이 thread를 생성하는 용도로 사용될 경우
+	// 자식의 TID를 부모의 user 영역 memory에 저장해야 한다.
+	// thpread_cancle, pthread_join() 시 해당 thread의 ID가 필요하기 때문.
 	if (clone_flags & CLONE_PARENT_SETTID)
 		put_user(nr, parent_tidptr);
 
@@ -2120,6 +2134,7 @@ long _do_fork(unsigned long clone_flags,
 			ptrace_event_pid(PTRACE_EVENT_VFORK_DONE, pid);
 	}
 
+	// IMRT: pid의 참조 카운트 1 감소 
 	put_pid(pid);
 	return nr;
 }
