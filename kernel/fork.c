@@ -1635,6 +1635,7 @@ static __latent_entropy struct task_struct *copy_process(
 	}
 
 	retval = -ENOMEM;
+	// IMRT: 새로 생성된 task의 task_struct 구조체와 커널 스택 할당 및 초기화
 	p = dup_task_struct(current, node);
 	if (!p)
 		goto fork_out;
@@ -1645,12 +1646,14 @@ static __latent_entropy struct task_struct *copy_process(
 	 * p->set_child_tid which is (ab)used as a kthread's data pointer for
 	 * kernel threads (PF_KTHREAD).
 	 */
+	// IMRT: 현재 사용되는 NPTL(Native Posix Thread Library)에서는 사용되지 않음 
 	p->set_child_tid = (clone_flags & CLONE_CHILD_SETTID) ? child_tidptr : NULL;
 	/*
 	 * Clear TID on mm_release()?
 	 */
 	p->clear_child_tid = (clone_flags & CLONE_CHILD_CLEARTID) ? child_tidptr : NULL;
 
+	// IMRT: kernel debugging을 위한 속성 (ftrace)
 	ftrace_graph_init_task(p);
 
 	rt_mutex_init_task(p);
@@ -1660,6 +1663,7 @@ static __latent_entropy struct task_struct *copy_process(
 	DEBUG_LOCKS_WARN_ON(!p->softirqs_enabled);
 #endif
 	retval = -EAGAIN;
+	// IMRT: 현재 유저의 프로세스 개수를 확인하여 최대 태스크 개수를 초과했는지 체크
 	if (atomic_read(&p->real_cred->user->processes) >=
 			task_rlimit(p, RLIMIT_NPROC)) {
 		if (p->real_cred->user != INIT_USER &&
@@ -1668,6 +1672,7 @@ static __latent_entropy struct task_struct *copy_process(
 	}
 	current->flags &= ~PF_NPROC_EXCEEDED;
 
+	// IMRT: 새로운 task_struct의 credential을 flag에 맞게 설정
 	retval = copy_creds(p, clone_flags);
 	if (retval < 0)
 		goto bad_fork_free;
@@ -1678,24 +1683,30 @@ static __latent_entropy struct task_struct *copy_process(
 	 * to stop root fork bombs.
 	 */
 	retval = -EAGAIN;
+	// IMRT: system에 동시에 존재가능한 최대 태스크 개수를 초과하는지 확인 
 	if (nr_threads >= max_threads)
 		goto bad_fork_cleanup_count;
 
+	// IMRT: task이 각종 지연 stat(CPU, block I/O, page swapping) 작업에 소요되는 시간정보 수집
 	delayacct_tsk_init(p);	/* Must remain after dup_task_struct() */
 	p->flags &= ~(PF_SUPERPRIV | PF_WQ_WORKER | PF_IDLE);
 	p->flags |= PF_FORKNOEXEC;
 	INIT_LIST_HEAD(&p->children);
 	INIT_LIST_HEAD(&p->sibling);
+	// IMRT: RCU(Read Copy Update) 관련 변수만 초기화 
 	rcu_copy_process(p);
 	p->vfork_done = NULL;
 	spin_lock_init(&p->alloc_lock);
 
+	// IMRT: task의 시그널 정보 초기화
 	init_sigpending(&p->pending);
 
+	// IMRT: task의 실행시간 측정을 위한 변수 초기화
 	p->utime = p->stime = p->gtime = 0;
 #ifdef CONFIG_ARCH_HAS_SCALED_CPUTIME
 	p->utimescaled = p->stimescaled = 0;
 #endif
+	// IMRT: 이전 동작시간 (utime, stime) 초기화
 	prev_cputime_init(&p->prev_cputime);
 
 #ifdef CONFIG_VIRT_CPU_ACCOUNTING_GEN
@@ -1719,6 +1730,7 @@ static __latent_entropy struct task_struct *copy_process(
 	p->real_start_time = ktime_get_boot_ns();
 	p->io_context = NULL;
 	p->audit_context = NULL;
+	// IMRT: cgroup subsystem 관련 필드 초기화
 	cgroup_fork(p);
 #ifdef CONFIG_NUMA
 	p->mempolicy = mpol_dup(p->mempolicy);
@@ -1767,6 +1779,7 @@ static __latent_entropy struct task_struct *copy_process(
 #endif
 
 	/* Perform scheduler related setup. Assign this task to a CPU. */
+	// IMRT: 스케줄링 관련 필드 초기화
 	retval = sched_fork(clone_flags, p);
 	if (retval)
 		goto bad_fork_cleanup_policy;
@@ -1785,32 +1798,53 @@ static __latent_entropy struct task_struct *copy_process(
 	retval = copy_semundo(clone_flags, p);
 	if (retval)
 		goto bad_fork_cleanup_security;
-	retval = copy_files(clone_flags, p);
+	// IMRT: 
+	// 태스크가 open한 파일에 대한 정보(파일 디스크립터 테이블, file 구조체)를
+	// 관리하는 files_struct 구조체를 생성해서 부모의 file_struct 구조체 내용을 복사한다
+	// retval = copy_files(clone_flags, p);
 	if (retval)
 		goto bad_fork_cleanup_semundo;
+	// IMRT:
+	// 태스크가 사용하는 현재 디렉터리 경로, 최상위 디렉터리 경로를 관리하는 fs_struct 
+	// 구조체를 생성해서 부모의 fs_struct 구조체 내용을 복사한다
 	retval = copy_fs(clone_flags, p);
 	if (retval)
 		goto bad_fork_cleanup_files;
-	retval = copy_sighand(clone_flags, p);
-	if (retval)
+	// IMRT:
+	// 시그널 핸들러 정보를 관리하는 sighand_struct 구조체를 생성해서 
+	// 부모의 sighand_struct 구조체 내용을 복사한다.
+	retval = copy_sighand(clone_flags, p); 
+	if (retval) 
 		goto bad_fork_cleanup_fs;
+	// IMRT:
+	// 시그널 정보를 관리하는 signal_struct 구조체를 생성해서 부모의
+	// signal_struct 구조체 내용을 복사한다.
 	retval = copy_signal(clone_flags, p);
 	if (retval)
 		goto bad_fork_cleanup_sighand;
+	// IMRT:
+	// 태스크가 사용하는 주소 공간에 대한 정보를 관리하는 mm_struct 구조체를 생성해서
+	// 부모의 mm_struct 구조체를 복사한다(COW 지원)
 	retval = copy_mm(clone_flags, p);
 	if (retval)
 		goto bad_fork_cleanup_signal;
+	// IMRT: task의 ns 관련 flag를 확인하여 모두 동일한 경우 부모이 nsproxy 값을 1 증가
+	// 아니면 해당 flag와 관련된 ns 및 nsproxy를 새로 생성
 	retval = copy_namespaces(clone_flags, p);
 	if (retval)
 		goto bad_fork_cleanup_mm;
 	retval = copy_io(clone_flags, p);
 	if (retval)
 		goto bad_fork_cleanup_namespaces;
+	// IMRT:
+	// 태스크가 실행 중일 때의 cpu register 정보를 담고 있는 cpu_context 구조체를 설정.
 	retval = copy_thread_tls(clone_flags, stack_start, stack_size, p, tls);
 	if (retval)
 		goto bad_fork_cleanup_io;
 
+	// IMRT: pid == init_struct_pid인 경우는 부팅 중 시스템의 모든 possible cpu의 idle 스레드를 생성하는 경우
 	if (pid != &init_struct_pid) {
+	 // IMRT: task의 pid 할당
 		pid = alloc_pid(p->nsproxy->pid_ns_for_children);
 		if (IS_ERR(pid)) {
 			retval = PTR_ERR(pid);
@@ -1847,6 +1881,7 @@ static __latent_entropy struct task_struct *copy_process(
 	clear_all_latency_tracing(p);
 
 	/* ok, now we should be set up.. */
+	// IMRT: 첫 번째 upid를 읽어온다. 최상위 pid ns에서 사용하는 pid 값
 	p->pid = pid_nr(pid);
 	if (clone_flags & CLONE_THREAD) {
 		p->exit_signal = -1;
@@ -1926,17 +1961,24 @@ static __latent_entropy struct task_struct *copy_process(
 	if (likely(p->pid)) {
 		ptrace_init_task(p, (clone_flags & CLONE_PTRACE) || trace);
 
+		// IMRT: 할당받은 pid 구조체를 task의 pid 구조체에 연결한다.
 		init_task_pid(p, PIDTYPE_PID, pid);
+		// IMRT: Thread group leader(process)라면 부모의 pgid와 sid를 설정한다.
 		if (thread_group_leader(p)) {
 			init_task_pid(p, PIDTYPE_PGID, task_pgrp(current));
 			init_task_pid(p, PIDTYPE_SID, task_session(current));
 
+			// IMRT: pid가 해당 ns의 init task라면...
 			if (is_child_reaper(pid)) {
+			 // IMRT: child_reaper로 자신의 pid 구조체를 등록
 				ns_of_pid(pid)->child_reaper = p;
+				// IMRT: init task이므로 kill signal로 죽일 수 없도록 unkillable 설정
 				p->signal->flags |= SIGNAL_UNKILLABLE;
 			}
 
+			// IMRT: signal을 받는 대표 task로 자신의 pid를 등록
 			p->signal->leader_pid = pid;
+			// IMRT: tty device로 부터 tty reference를 참조 카운트 증가시키고 가져옴
 			p->signal->tty = tty_kref_get(current->signal->tty);
 			/*
 			 * Inherit has_child_subreaper flag under the same
@@ -1945,8 +1987,12 @@ static __latent_entropy struct task_struct *copy_process(
 			 */
 			p->signal->has_child_subreaper = p->real_parent->signal->has_child_subreaper ||
 							 p->real_parent->signal->is_child_subreaper;
+			// IMRT: 부모의 자식을 자신의 형제 프로세스로 등록
 			list_add_tail(&p->sibling, &p->real_parent->children);
+			// IMRT: global init task의 tasks로 자신의 tasks(list head)를 등록
 			list_add_tail_rcu(&p->tasks, &init_task.tasks);
+			// IMRT: task의 PGID 및 SID node를 이 task가 속한 pgid, sid list에 연결
+			// 문C PID 관리하기 3번째 그림 참조
 			attach_pid(p, PIDTYPE_PGID);
 			attach_pid(p, PIDTYPE_SID);
 			__this_cpu_inc(process_counts);
@@ -1954,15 +2000,19 @@ static __latent_entropy struct task_struct *copy_process(
 			current->signal->nr_threads++;
 			atomic_inc(&current->signal->live);
 			atomic_inc(&current->signal->sigcnt);
+			// IMRT: thread group reader에 자신의 node를 연결
 			list_add_tail_rcu(&p->thread_group,
 					  &p->group_leader->thread_group);
+			// IMRT: thread signal reader에 자신의 node를 연결
 			list_add_tail_rcu(&p->thread_node,
 					  &p->signal->thread_head);
 		}
+		// IMRT: task의 PID node를 이 task가 속한 pid list에 연결
 		attach_pid(p, PIDTYPE_PID);
 		nr_threads++;
 	}
 
+	// 여기할 차례
 	total_forks++;
 	spin_unlock(&current->sighand->siglock);
 	syscall_tracepoint_update(p);
