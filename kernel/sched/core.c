@@ -2343,8 +2343,10 @@ static inline void init_schedstats(void) {}
 int sched_fork(unsigned long clone_flags, struct task_struct *p)
 {
 	unsigned long flags;
+	// IMRT : 선점을 비활성화하고 current cpu의 id를 구한다.
 	int cpu = get_cpu();
 
+	// IMRT : 스케줄러와 관련된 필드 초기화 대부분 0으로
 	__sched_fork(clone_flags, p);
 	/*
 	 * We mark the process as NEW here. This guarantees that
@@ -2356,11 +2358,15 @@ int sched_fork(unsigned long clone_flags, struct task_struct *p)
 	/*
 	 * Make sure we do not leak PI boosting priority to the child.
 	 */
+	//IMRT : dynamic priority를 설정한다. 부모 태스크의 dynamic priority 대신
+	// normal priority를 상속받는다. normal로 상속받는 이유는 boost-up 가능한
+	// 부모 태스크의 dynamic priory 사용 시 높은 우선순위를 갖게 되기 때문에!
 	p->prio = current->normal_prio;
 
 	/*
 	 * Revert to default priority/policy on fork if requested.
 	 */
+	// IMRT : 스케쥴링 정책 초기화 요청 시기본으로 설정한다.
 	if (unlikely(p->sched_reset_on_fork)) {
 		if (task_has_dl_policy(p) || task_has_rt_policy(p)) {
 			p->policy = SCHED_NORMAL;
@@ -2379,6 +2385,7 @@ int sched_fork(unsigned long clone_flags, struct task_struct *p)
 		p->sched_reset_on_fork = 0;
 	}
 
+	// IMRT : sched class를 설정한다. DeadLine 프로세스는 새로운 DeadLine 프로세스를 생성할 수 없기에 종료하고, 그 외에는 prio에 맞는 sched_class로 설정한다.
 	if (dl_prio(p->prio)) {
 		put_cpu();
 		return -EAGAIN;
@@ -2402,7 +2409,21 @@ int sched_fork(unsigned long clone_flags, struct task_struct *p)
 	 * We're setting the CPU for the first time, we don't migrate,
 	 * so use __set_task_cpu().
 	 */
+	// IMRT : 태스크가 실행할 cpu를 설정한다. 마이그레이션 하지 않기 때문에
+	// set_task_cpu() 대신 __set_task_cpu()를 호출한다.
 	__set_task_cpu(p, cpu);
+
+	/*
+	 * IMRT
+	 * 스케줄링 클래스마다 다르게 fork된 태스크를 초기화하기 위해 제공하는 함수를 호출
+	 * 한다. 현재는 fair 스케줄링 클래스만 유의미한 구현을 task_fork_fair( )를 통해 제공하고 있다. 이
+	 * 함수에서는 다음과 같은 초기화를 수행한다.
+	 * 	 태스크가 enqueue되는 CFS 런큐, 태스크의 부모 스케줄링 엔티티, vruntime 설정
+	 * 	 태스크가 실행할 cpu를 나타내는 thread_info 구조체의 cpu 필드 설정
+	 * 	 태스크가 깨어나서 실행할 cpu로 먼저 고려되는 cpu를 나타내는 wake_cpu 필드 설정
+	 * 	 태스크와 연관된 CFS 런큐, CFS 런큐의 current 엔티티의 런타임 정보 갱신
+	 * 	 필요할 경우 스케줄링 요청을 설정
+	 * */
 	if (p->sched_class->task_fork)
 		p->sched_class->task_fork(p);
 	raw_spin_unlock_irqrestore(&p->pi_lock, flags);
@@ -2412,14 +2433,19 @@ int sched_fork(unsigned long clone_flags, struct task_struct *p)
 		memset(&p->sched_info, 0, sizeof(p->sched_info));
 #endif
 #if defined(CONFIG_SMP)
+	//IMRT : cpu에 동작하지 않고 있으므로 0으로 선점
+	// 선점하는 태스크는 1, 선점당한 태스크는 0
 	p->on_cpu = 0;
 #endif
+	// IMRT : preempt_count를 초기화한다.
+	// preempt_count가 0이 아니면 스케쥴링이 일어나지 않도록 한다.
 	init_task_preempt_count(p);
 #ifdef CONFIG_SMP
 	plist_node_init(&p->pushable_tasks, MAX_PRIO);
 	RB_CLEAR_NODE(&p->pushable_dl_tasks);
 #endif
 
+	// IMRT : 선점을 다시 활성화 한다.
 	put_cpu();
 	return 0;
 }
@@ -2478,9 +2504,9 @@ void wake_up_new_task(struct task_struct *p)
 	// IMRT: rq에 task를 등록
 	activate_task(rq, p, ENQUEUE_NOCLOCK);
 	p->on_rq = TASK_ON_RQ_QUEUED;
-	// IMRT: perf or FTRACE에서 추적가능하도록 이벤트 등록? 
+	// IMRT: perf or FTRACE에서 추적가능하도록 이벤트 등록?
 	trace_sched_wakeup_new(p);
-	// IMRT: scheduler에서 preemption 여부를 체크한다. 
+	// IMRT: scheduler에서 preemption 여부를 체크한다.
 	// 자세한 내용은 각 scheduler의 check_preempt_curr 확인
 	check_preempt_curr(rq, p, WF_FORK);
 #ifdef CONFIG_SMP
@@ -3856,7 +3882,7 @@ static inline int rt_effective_prio(struct task_struct *p, int prio)
 }
 #endif
 
-// IMRT: nice(), setpriority() system call이 호출된 경우 마지막으로 호출되는 함수로, 
+// IMRT: nice(), setpriority() system call이 호출된 경우 마지막으로 호출되는 함수로,
 // static, dynamic, normal prio를 설정하고, load_weight를 설정한다.
 void set_user_nice(struct task_struct *p, long nice)
 {
@@ -3888,7 +3914,7 @@ void set_user_nice(struct task_struct *p, long nice)
 	running = task_current(rq, p);
 	if (queued)
 		dequeue_task(rq, p, DEQUEUE_SAVE | DEQUEUE_NOCLOCK);
-	// IMRT: XXX put_prev_task()의 역할? 
+	// IMRT: XXX put_prev_task()의 역할?
 	if (running)
 		put_prev_task(rq, p);
 

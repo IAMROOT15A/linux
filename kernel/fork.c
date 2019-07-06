@@ -229,7 +229,7 @@ static unsigned long *alloc_thread_stack_node(struct task_struct *tsk, int node)
 		return s->addr;
 	}
 
-	// IMRT: 여기볼 차례
+	// IMRT: 해당 범위에 할당 가능한 영역이 있으면 메모리 할당.
 	stack = __vmalloc_node_range(THREAD_SIZE, THREAD_ALIGN,
 				     VMALLOC_START, VMALLOC_END,
 				     THREADINFO_GFP,
@@ -773,17 +773,20 @@ static struct task_struct *dup_task_struct(struct task_struct *orig, int node)
 
 	if (node == NUMA_NO_NODE)
 		node = tsk_fork_get_node(orig);
-	// kmem_cache에서 해당 task struct의 공간 동적 할당
+	// IMRT : kmem_cache에서 해당 task struct의 공간 동적 할당
 	tsk = alloc_task_struct_node(node);
 	if (!tsk)
 		return NULL;
 
+	// IMRT : 할당 받은 메모리의 주소 가져옴.
 	stack = alloc_thread_stack_node(tsk, node);
 	if (!stack)
 		goto free_tsk;
 
+	// IMRT : task의 vm_area를 가져온다.
 	stack_vm_area = task_stack_vm_area(tsk);
 
+	// IMRT : orig의 내용을 tsk로 복사한다.
 	err = arch_dup_task_struct(tsk, orig);
 
 	/*
@@ -791,6 +794,7 @@ static struct task_struct *dup_task_struct(struct task_struct *orig, int node)
 	 * sure they're properly initialized before using any stack-related
 	 * functions again.
 	 */
+	// IMRT : stack의 시작주소를 입력한다.
 	tsk->stack = stack;
 #ifdef CONFIG_VMAP_STACK
 	tsk->stack_vm_area = stack_vm_area;
@@ -812,7 +816,9 @@ static struct task_struct *dup_task_struct(struct task_struct *orig, int node)
 	tsk->seccomp.filter = NULL;
 #endif
 
+	// IMRT : 할당받은 thread_info의 구조체를 부모 태스크의 thread_info 구조체 내용으로 설정한다. CONFIG_THREAD_INFO_IN_TASK 가 설정된 경우에는 task_struct 내부에서 thread_info를 관리하므로 아무 동작도 하지 않는다.
 	setup_thread_stack(tsk, orig);
+
 	clear_user_return_notifier(tsk);
 	clear_tsk_need_resched(tsk);
 	set_task_stack_end_magic(tsk);
@@ -1636,6 +1642,8 @@ static __latent_entropy struct task_struct *copy_process(
 
 	retval = -ENOMEM;
 	// IMRT: 새로 생성된 task의 task_struct 구조체와 커널 스택 할당 및 초기화
+	// 이 함수에서는 태스크를 위한 자료구조를 할당받고 부모의 것을 대부분 상속.
+	// 단 task_struct 구조체와 thread_info 구조체가 서로를 가리키는 필드만 갱신.
 	p = dup_task_struct(current, node);
 	if (!p)
 		goto fork_out;
@@ -1646,7 +1654,7 @@ static __latent_entropy struct task_struct *copy_process(
 	 * p->set_child_tid which is (ab)used as a kthread's data pointer for
 	 * kernel threads (PF_KTHREAD).
 	 */
-	// IMRT: 현재 사용되는 NPTL(Native Posix Thread Library)에서는 사용되지 않음 
+	// IMRT: 현재 사용되는 NPTL(Native Posix Thread Library)에서는 사용되지 않음
 	p->set_child_tid = (clone_flags & CLONE_CHILD_SETTID) ? child_tidptr : NULL;
 	/*
 	 * Clear TID on mm_release()?
@@ -1683,7 +1691,7 @@ static __latent_entropy struct task_struct *copy_process(
 	 * to stop root fork bombs.
 	 */
 	retval = -EAGAIN;
-	// IMRT: system에 동시에 존재가능한 최대 태스크 개수를 초과하는지 확인 
+	// IMRT: system에 동시에 존재가능한 최대 태스크 개수를 초과하는지 확인
 	if (nr_threads >= max_threads)
 		goto bad_fork_cleanup_count;
 
@@ -1693,7 +1701,7 @@ static __latent_entropy struct task_struct *copy_process(
 	p->flags |= PF_FORKNOEXEC;
 	INIT_LIST_HEAD(&p->children);
 	INIT_LIST_HEAD(&p->sibling);
-	// IMRT: RCU(Read Copy Update) 관련 변수만 초기화 
+	// IMRT: RCU(Read Copy Update) 관련 변수만 초기화
 	rcu_copy_process(p);
 	p->vfork_done = NULL;
 	spin_lock_init(&p->alloc_lock);
@@ -1798,23 +1806,23 @@ static __latent_entropy struct task_struct *copy_process(
 	retval = copy_semundo(clone_flags, p);
 	if (retval)
 		goto bad_fork_cleanup_security;
-	// IMRT: 
+	// IMRT:
 	// 태스크가 open한 파일에 대한 정보(파일 디스크립터 테이블, file 구조체)를
 	// 관리하는 files_struct 구조체를 생성해서 부모의 file_struct 구조체 내용을 복사한다
 	// retval = copy_files(clone_flags, p);
 	if (retval)
 		goto bad_fork_cleanup_semundo;
 	// IMRT:
-	// 태스크가 사용하는 현재 디렉터리 경로, 최상위 디렉터리 경로를 관리하는 fs_struct 
+	// 태스크가 사용하는 현재 디렉터리 경로, 최상위 디렉터리 경로를 관리하는 fs_struct
 	// 구조체를 생성해서 부모의 fs_struct 구조체 내용을 복사한다
 	retval = copy_fs(clone_flags, p);
 	if (retval)
 		goto bad_fork_cleanup_files;
 	// IMRT:
-	// 시그널 핸들러 정보를 관리하는 sighand_struct 구조체를 생성해서 
+	// 시그널 핸들러 정보를 관리하는 sighand_struct 구조체를 생성해서
 	// 부모의 sighand_struct 구조체 내용을 복사한다.
-	retval = copy_sighand(clone_flags, p); 
-	if (retval) 
+	retval = copy_sighand(clone_flags, p);
+	if (retval)
 		goto bad_fork_cleanup_fs;
 	// IMRT:
 	// 시그널 정보를 관리하는 signal_struct 구조체를 생성해서 부모의
@@ -1883,16 +1891,24 @@ static __latent_entropy struct task_struct *copy_process(
 	/* ok, now we should be set up.. */
 	// IMRT: 첫 번째 upid를 읽어온다. 최상위 pid ns에서 사용하는 pid 값
 	p->pid = pid_nr(pid);
+	// IMRT: exit_signal, group_leader, tgid 필드를 설정한다.
+	// 설정은 스레드를 생성중인지 여부에 따라 달라진다.
 	if (clone_flags & CLONE_THREAD) {
+		// IMRT : 스레드 생성하는 경우
 		p->exit_signal = -1;
+		//IMRT : 현재 태스크의 그룹 리터로 설정
 		p->group_leader = current->group_leader;
+		// IMRT : 현재 태스크의 tgid
 		p->tgid = current->tgid;
 	} else {
 		if (clone_flags & CLONE_PARENT)
 			p->exit_signal = current->group_leader->exit_signal;
 		else
 			p->exit_signal = (clone_flags & CSIGNAL);
+		//IMRT : group_leader로 현재 태스크를 설정한다.
+		// 자기자신이 그룹리더가 된다.
 		p->group_leader = p;
+		// pid가 tgid가 된다.
 		p->tgid = p->pid;
 	}
 
@@ -1901,6 +1917,8 @@ static __latent_entropy struct task_struct *copy_process(
 	p->dirty_paused_when = 0;
 
 	p->pdeath_signal = 0;
+	// IMRT : 스레드 그룹안의 모든 스레드를 연결하는 필드인 thread_group을 초기화 한다.
+	// 추후에 스레드가 생성될 경우 그룹 리더의 thread_group을 헤더로 스레드가 생성순 연결된다.
 	INIT_LIST_HEAD(&p->thread_group);
 	p->task_works = NULL;
 
@@ -1923,6 +1941,8 @@ static __latent_entropy struct task_struct *copy_process(
 
 	/* CLONE_PARENT re-uses the old parent */
 	if (clone_flags & (CLONE_PARENT|CLONE_THREAD)) {
+		// IMRT: PARENT, THREAD 플래그인 경우
+		// 부모의 real_parent와 parent_exec_id를 그대로 사용한다.
 		p->real_parent = current->real_parent;
 		p->parent_exec_id = current->parent_exec_id;
 	} else {
@@ -2012,13 +2032,18 @@ static __latent_entropy struct task_struct *copy_process(
 		nr_threads++;
 	}
 
-	// 여기할 차례
+	// 시스템이 부팅된 이후로 fork를 통해 생성된 총 태스크의 개수 (스레드 포함)
+	// /proc/stat에서 확인가능
 	total_forks++;
+
 	spin_unlock(&current->sighand->siglock);
 	syscall_tracepoint_update(p);
 	write_unlock_irq(&tasklist_lock);
 
 	proc_fork_connector(p);
+
+	// IMRT : fork, exec, id change, exit 등의 프로세스 이벤트를 유저 공간에 전달해
+	// 주는 프로세스 이벤트 커넥터를 통해 태스크가 fork 되었음을 알린다.
 	cgroup_post_fork(p);
 	cgroup_threadgroup_change_end(current);
 	perf_event_fork(p);
@@ -2026,6 +2051,7 @@ static __latent_entropy struct task_struct *copy_process(
 	trace_task_newtask(p, clone_flags);
 	uprobe_copy_process(p, clone_flags);
 
+	// RETURN하기!!
 	return p;
 
 bad_fork_cancel_cgroup:
@@ -2184,7 +2210,7 @@ long _do_fork(unsigned long clone_flags,
 			ptrace_event_pid(PTRACE_EVENT_VFORK_DONE, pid);
 	}
 
-	// IMRT: pid의 참조 카운트 1 감소 
+	// IMRT: pid의 참조 카운트 1 감소
 	put_pid(pid);
 	return nr;
 }

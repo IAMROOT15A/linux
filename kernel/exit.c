@@ -762,6 +762,7 @@ static inline void check_stack_usage(void) {}
 
 void __noreturn do_exit(long code)
 {
+	// IMRT : 현재 task struct를 가져온다.
 	struct task_struct *tsk = current;
 	int group_dead;
 
@@ -782,6 +783,8 @@ void __noreturn do_exit(long code)
 	 * mm_release()->clear_child_tid() from writing to a user-controlled
 	 * kernel address.
 	 */
+	// IMRT : KERNEL_DS(Data Segment)로 설정되어 있다면, 종료하기 위해
+	// USER_DS로 설정해준다.
 	set_fs(USER_DS);
 
 	ptrace_event(PTRACE_EVENT_EXIT, code);
@@ -792,6 +795,9 @@ void __noreturn do_exit(long code)
 	 * We're taking recursive faults here in do_exit. Safest is to just
 	 * leave this task alone and wait for reboot.
 	 */
+	//IMRT : 현재 태스크가 종료작업이 다른 곳에서 진행중인지 확인한다.
+	//   - 동시에 종료작업이 수행되는 경우가 무엇인가??????????????
+	//     하나의 task가 동시에 kernel context에서 수행될 수 있는것인가?
 	if (unlikely(tsk->flags & PF_EXITING)) {
 		pr_alert("Fixing recursive fault but reboot is needed!\n");
 		/*
@@ -804,10 +810,14 @@ void __noreturn do_exit(long code)
 		 * task into the wait for ever nirwana as well.
 		 */
 		tsk->flags |= PF_EXITPIDONE;
+		// 중복되는 do_exit() 호출을 막기 위해 상태 변경하고
 		set_current_state(TASK_UNINTERRUPTIBLE);
+		// IMRT : 다른 태스크가 수행할 수 있도록 schedule() 호출함.
 		schedule();
 	}
 
+	// PF_EXITING 설정하여 해당 태스크가 종료중임을 알린다.
+	// 만약 태스크가 스레드이고 스레드에 pending 시그널이 있다면 대신 처리해줄 스레드를 스레드 그룹에서 찾아 해당 시그러널을 모두 처리하도록 설정한다.
 	exit_signals(tsk);  /* sets PF_EXITING */
 	/*
 	 * Ensure that all new tsk->pi_lock acquisitions must observe
@@ -818,6 +828,7 @@ void __noreturn do_exit(long code)
 	 * Ensure that we must observe the pi_state in exit_mm() ->
 	 * mm_release() -> exit_pi_state_list().
 	 */
+	// IMRT : why?? lock and unlock??
 	raw_spin_lock_irq(&tsk->pi_lock);
 	raw_spin_unlock_irq(&tsk->pi_lock);
 
@@ -831,6 +842,8 @@ void __noreturn do_exit(long code)
 	/* sync mm's RSS info before statistics gathering */
 	if (tsk->mm)
 		sync_mm_rss(tsk->mm);
+
+	// 여기까지 함. (07.06)
 	acct_update_integrals(tsk);
 	group_dead = atomic_dec_and_test(&tsk->signal->live);
 	if (group_dead) {

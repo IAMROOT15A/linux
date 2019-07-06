@@ -3918,6 +3918,7 @@ static void check_spread(struct cfs_rq *cfs_rq, struct sched_entity *se)
 static void
 place_entity(struct cfs_rq *cfs_rq, struct sched_entity *se, int initial)
 {
+	//IMRT : 최소 vruntime 값을 가져온다.
 	u64 vruntime = cfs_rq->min_vruntime;
 
 	/*
@@ -3927,6 +3928,9 @@ place_entity(struct cfs_rq *cfs_rq, struct sched_entity *se, int initial)
 	 * stays open at the end.
 	 */
 	if (initial && sched_feat(START_DEBIT))
+		// IMRT : vruntime을 entity의 load_weight가 반영된 time slice만큼 증가.
+		// CFS 런큐에서 동작중인 태스크들이 새롭게 enqueue 된 태스크들의 의해
+		// 동작하지 못하는 상황을 방지하도록 하기 위해.
 		vruntime += sched_vslice(cfs_rq, se);
 
 	/* sleeps up to a single latency don't count. */
@@ -3939,11 +3943,13 @@ place_entity(struct cfs_rq *cfs_rq, struct sched_entity *se, int initial)
 		 */
 		if (sched_feat(GENTLE_FAIR_SLEEPERS))
 			thresh >>= 1;
-
+		// 처음 enqueue되는 태스크가 아닌경우, vruntime을 줄여 우선순위 높인다.
 		vruntime -= thresh;
 	}
 
 	/* ensure we never gain time by being placed backwards. */
+	// IMRT : 조정된 vruntime과 se->vruntime 중 큰 값을 entity가 사용하도록
+	// 설정한다. 증가하는 방향으로 유지됨을 보장한다.
 	se->vruntime = max_vruntime(se->vruntime, vruntime);
 }
 
@@ -9463,6 +9469,8 @@ static void task_tick_fair(struct rq *rq, struct task_struct *curr, int queued)
  *  - child not yet on the tasklist
  *  - preemption disabled
  */
+// IMRT : 새롭게 생성된 normal 태스크 초기화 하기.
+// 태스크의 스케줄링 정보 초기화 하고, vruntime 설정함.
 static void task_fork_fair(struct task_struct *p)
 {
 	struct cfs_rq *cfs_rq;
@@ -9471,8 +9479,12 @@ static void task_fork_fair(struct task_struct *p)
 	struct rq_flags rf;
 
 	rq_lock(rq, &rf);
+	//IMRT : 런큐의 시간 정보를 나타내는 clock, clock_task 필드를 갱신한다.
+	// clock_task : 현재 시각에서 irq 소요 시간을 뺀 실제 태스크에 소모한 시간만을 사용한 클럭.
+	// clock : irq 소요 시간까지 포함된 시간
 	update_rq_clock(rq);
 
+	// IMRT 태스크의 CFS 런큐를 구한다.
 	cfs_rq = task_cfs_rq(current);
 	curr = cfs_rq->curr;
 	if (curr) {
@@ -9481,6 +9493,9 @@ static void task_fork_fair(struct task_struct *p)
 	}
 	place_entity(cfs_rq, se, 1);
 
+	// IMRT : sysctl_sched_child_runs_first = 자식이 먼저 실행되도록
+	// 그 조건을 만족하기 위해 curr vruntime 값이 se vruntime(자식) 보다 작으면
+	// swap 해줌으로써 자식이 먼저 수행되도록 해준다.
 	if (sysctl_sched_child_runs_first && curr && entity_before(curr, se)) {
 		/*
 		 * Upon rescheduling, sched_class::put_prev_task() will place

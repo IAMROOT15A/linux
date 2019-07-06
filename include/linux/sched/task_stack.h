@@ -32,6 +32,8 @@ static inline unsigned long *end_of_stack(const struct task_struct *task)
 
 #define task_stack_page(task)	((void *)(task)->stack)
 
+// thread의 stack(thread_info) 을 부모의 내용으로 설정한다.
+// thread_info의 task만 새로 할당받은 task_struct 구조체를 가리키도록 한다.
 static inline void setup_thread_stack(struct task_struct *p, struct task_struct *org)
 {
 	*task_thread_info(p) = *task_thread_info(org);
