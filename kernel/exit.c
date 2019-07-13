@@ -515,6 +515,7 @@ static void exit_mm(void)
 		up_read(&mm->mmap_sem);
 
 		self.task = current;
+		// IMRT: core_state->dumper.next에 self를 등록, self.next는 dumpre.next로
 		self.next = xchg(&core_state->dumper.next, &self);
 		/*
 		 * Implies mb(), the result of xchg() must be visible
@@ -525,8 +526,11 @@ static void exit_mm(void)
 
 		for (;;) {
 			set_current_state(TASK_UNINTERRUPTIBLE);
+			// IMRT: dumper를 처리할 애가 있으면
+			// coredump_finish()에서 dumper의 끝까지 동작하면서 curr->task = null이 된다.
 			if (!self.task) /* see coredump_finish() */
 				break;
+			// IMRT: scheduling한다
 			freezable_schedule();
 		}
 		__set_current_state(TASK_RUNNING);
@@ -843,23 +847,34 @@ void __noreturn do_exit(long code)
 	if (tsk->mm)
 		sync_mm_rss(tsk->mm);
 
-	// 여기까지 함. (07.06)
 	acct_update_integrals(tsk);
+	// IMRT: tsk->signal->live == thread group 내에 생성된 thread 갯수
+	// live 값을 1 감소시킨다.
 	group_dead = atomic_dec_and_test(&tsk->signal->live);
+	// IMRT: 모든 Thread가 종료되었다면 
 	if (group_dead) {
 #ifdef CONFIG_POSIX_TIMERS
+		// IMRT: SIGALRM 시그널을 태스크에 보내는 hrtimer, interval timer 종료
 		hrtimer_cancel(&tsk->signal->real_timer);
 		exit_itimers(tsk->signal);
 #endif
+		// IMRT: rss=process가 사용한 물리 페이지 갯수
 		if (tsk->mm)
 			setmax_mm_hiwater_rss(&tsk->signal->maxrss, tsk->mm);
 	}
+	// IMRT: process가 사용한 메모리 사용량 및 cpu time등의 정보 저장
 	acct_collect(code, group_dead);
 	if (group_dead)
+		// IMRT: tty로 출력해야 할 내용이 audit버퍼에 남아있으면 모두 push 하고 audit 버퍼 free
 		tty_audit_exit();
+	// IMRT: free a per-task audit context
 	audit_free(tsk);
 
+	// IMRT: 인자로 전달된 종료 code를 exit_code에 저장
+	// 부모는 자식의 exit_code를 보고 종료 이유를 파악할 수 있음
 	tsk->exit_code = code;
+	// IMRT: ns별로 존재하는 init_net에 있는 어떤(?)놈에게 task stat를 전달함.
+	// /proc/stat에서 확인할 수 있는 데이터를 전송하는걸로 보임
 	taskstats_exit(tsk, group_dead);
 
 	exit_mm();
